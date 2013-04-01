@@ -11,5 +11,12 @@ disk-array.o: disk-array.c
 disk.o: disk.c
 	gcc -Wall -g -c disk.c -o disk.o
 
+test: test.o disk-array.o disk.o
+	gcc test.o disk-array.o disk.o -o raidsim
+
+test.o: test.c
+	gcc -Wall -g -c test.c -o test.o
+
 clean:
-	rm -f *.o virtmem
+	rm -f *.o raidsim
+	rm -f *.o test
