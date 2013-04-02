@@ -9,7 +9,7 @@
 
 // Global variables
 int verbose = 0;
-int level, strip, disks;
+int level, strip, disks, blockSize;
 struct disk_array * diskArray;
 
 // Error Message for input
@@ -29,7 +29,6 @@ void endProgram();
 // Main
 int main( int argc, char* argv[]){
 	// Declarations of variables
-	int size;
     char * filename;
     char c;
     char * endptr;
@@ -98,13 +97,13 @@ int main( int argc, char* argv[]){
 			break;
 		// SIZE
 		case 'd':
-			size = strtol(optarg, &endptr, 10);
+			blockSize = strtol(optarg, &endptr, 10);
 			// Not an int
 			if (endptr == optarg){
 				errorMsg(7);
 			}
 			// 0 or negative blocks per disk
-			else if (size < 1){
+			else if (blockSize < 1){
 				errorMsg(8);
 			}
 			break;
@@ -130,7 +129,7 @@ int main( int argc, char* argv[]){
     
     // Create a disk array
     char * virtualDiskArray = "temp";
-    diskArray = disk_array_create(virtualDiskArray, disks, size);
+    diskArray = disk_array_create(virtualDiskArray, disks, blockSize);
     
     char buf[1000];
     while (fgets(buf,1000, fd)!=NULL){
@@ -284,12 +283,12 @@ void readFromArray(int lba, int size){
 
 		while (size > 0) {
 			printf("Read this block, %i, on this disk %i\n", currentBlock, currentDisk);
+			//print current block
 
 			//I think this is how this is supposed to work
-			//char buffer[size]
+			//char buffer[blockSize];
 			//disk_array_read(diskArray, currentDisk, currentBlock, buffer);
 
-			//print current block
 			lba ++;
 			currentDisk = (lba/strip) % disks;
 			currentBlock = (lba%strip)+(lba/strip)/disks;
@@ -312,17 +311,45 @@ void readFromArray(int lba, int size){
 
 // Write LBA size
 void writeToArray(int lba, int size, char * value){
+	char* temp = value;
+	if (level == 0) {
+		int currentDisk = (lba/strip) % disks;
+		int currentBlock = (lba%strip)+(lba/strip)/disks;
+		while (size > 0) {
+			printf("Write this block, %i, on this disk %i\n", currentBlock, currentDisk);
 
+			//this should work
+			//disk_array_write(diskArray, currentDisk, currentBlock, temp);
+
+			lba ++;
+			temp += blockSize;
+			currentDisk = (lba/strip) % disks;
+			currentBlock = (lba%strip)+(lba/strip)/disks;
+			size --;
+		}
+	}
+	else if(level == 10){
+
+	}
+	else if(level == 4){
+
+	}
+	else if(level == 5){
+
+	}
+	else{
+		errorMsg(15);
+	}
 }
 
 // Fail disk
 void failDisk(int disk){
-
+	disk_array_fail_disk(diskArray, disk);
 }
 
 // Recover disk
 void recoverDisk(int disk){
-
+	disk_array_recover_disk( diskArray, disk);
 }
 
 // End of trace file
