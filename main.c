@@ -133,6 +133,7 @@ int main( int argc, char* argv[]){
     
     char buf[1000];
     while (fgets(buf,1000, fd)!=NULL){
+	buf[strlen(buf) - 1] = '\0'; 
         parseLine(buf);
     }
     exit(0);
@@ -146,11 +147,11 @@ void parseLine (char * line){
     if (token == NULL){
 		errorMsg(12);
     }
-	printf("Parse\n %s\n", token);
+
+    printf("Parse\n%s\n", token);
 
     char * endPtr;
     if (strcmp(token, "READ") == 0){
-		printf("Read\n");
 		//Get the lba
 		token = strtok(NULL, " ");
 		if (token == NULL){
@@ -179,7 +180,6 @@ void parseLine (char * line){
 		if (token != NULL){
 			errorMsg(17);
 		}
-
 		readFromArray(lba,readSize);
 	}
 
@@ -211,11 +211,11 @@ void parseLine (char * line){
 		}
 		//put value (an int) into buffer and then make a bigger buffer of it repeating
 		char value[4];
-		strcpy(value, token, 4);
-		char buff[blockSize];
+		strcpy(value, token);
+		char buff[BLOCK_SIZE];
 		int i;
-		for (i = 0; i < blocksize/4; i++){
-			((int*)buff)[i] = (int*)value;
+		for (i = 0; i < 256; i++){
+			((int*)buff)[i] = ((int*)value)[0];
 		}
 		//The command should end here
 		token = strtok(NULL, " ");
@@ -290,9 +290,9 @@ void readFromArray(int lba, int size){
 			//print current block
 
 			//I think this is how this is supposed to work
-			//char buffer[blockSize];
-			//disk_array_read(diskArray, currentDisk, currentBlock, buffer);
-
+			char buffer[BLOCK_SIZE];
+			disk_array_read(diskArray, currentDisk, currentBlock, buffer);
+			printf("%s\n", buffer);
 			lba ++;
 			currentDisk = (lba/strip) % disks;
 			currentBlock = (lba%strip)+(lba/strip)/disks;
@@ -322,7 +322,7 @@ void writeToArray(int lba, int size, char * buff){
 			printf("Write this block, %i, on this disk %i\n", currentBlock, currentDisk);
 
 			//this should work
-			//disk_array_write(diskArray, currentDisk, currentBlock, buff);
+			disk_array_write(diskArray, currentDisk, currentBlock, buff);
 
 			lba ++;
 			currentDisk = (lba/strip) % disks;
@@ -357,7 +357,7 @@ void recoverDisk(int disk){
 // End of trace file
 void endProgram(){
   printf("I am going to succesfully end\n");
-exit(0);
+  exit(0);
 }
 
 
