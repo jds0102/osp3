@@ -21,7 +21,7 @@ int errorMsg(int number){
 //Prototypes for functions
 void parseLine(char * line);
 void readFromArray(int lba, int size);
-void writeToArray(int lba, int size, char* value);
+void writeToArray(int lba, int size, char* buff);
 void failDisk(int disk);
 void recoverDisk(int disk);
 void endProgram();
@@ -209,17 +209,21 @@ void parseLine (char * line){
 		if (token == NULL){
 			errorMsg(14);
 		}
-		char* value = malloc(sizeof(char*)*strlen(token));
-		strcpy(value, token);
-      
+		//put value (an int) into buffer and then make a bigger buffer of it repeating
+		char value[4];
+		strcpy(value, token, 4);
+		char buff[blockSize];
+		int i;
+		for (i = 0; i < blocksize/4; i++){
+			((int*)buff)[i] = (int*)value;
+		}
 		//The command should end here
 		token = strtok(NULL, " ");
 		if (token != NULL){
 			errorMsg(14);
 		}
 
-		writeToArray(lba, writeSize, value);
-		free(value);
+		writeToArray(lba, writeSize, buff);
     }
     else if (strcmp(token, "FAIL") == 0){
 		//Get the disk that failed  
@@ -310,8 +314,7 @@ void readFromArray(int lba, int size){
 }
 
 // Write LBA size
-void writeToArray(int lba, int size, char * value){
-	char* temp = value;
+void writeToArray(int lba, int size, char * buff){
 	if (level == 0) {
 		int currentDisk = (lba/strip) % disks;
 		int currentBlock = (lba%strip)+(lba/strip)/disks;
@@ -319,10 +322,9 @@ void writeToArray(int lba, int size, char * value){
 			printf("Write this block, %i, on this disk %i\n", currentBlock, currentDisk);
 
 			//this should work
-			//disk_array_write(diskArray, currentDisk, currentBlock, temp);
+			//disk_array_write(diskArray, currentDisk, currentBlock, buff);
 
 			lba ++;
-			temp += blockSize;
 			currentDisk = (lba/strip) % disks;
 			currentBlock = (lba%strip)+(lba/strip)/disks;
 			size --;
