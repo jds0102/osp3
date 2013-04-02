@@ -9,6 +9,7 @@
 
 // Global variables
 int verbose = 0;
+int level, strip, disks;
 
 // Error Message for input
 int errorMsg(int number){
@@ -16,67 +17,19 @@ int errorMsg(int number){
     exit(1);
 }
 
-// Read LBA size
-
-
-// Write LBA size
-
-
-// Fail disk
-
-
-// Recover disk
-
-
-// End of trace file
-
-
-// Parsing function
-// Splits up by command in trace file
-char ** parseLine (char * line){
-    char* token = strtok(line, " ");
-    if (token == NULL){
-	errorMsg(14);
-    }
-    if (strcmp(token, "READ")){
-      token = strtok(NULL, " ");
-      if (token == NULL){
-	errorMsg(14);
-      }
-      char* temp1 = malloc(sizeof(char*)*strlen(token));
-      strcpy(temp1, token);
-      token = strtok(NULL, " ");
-      if (token == NULL){
-	errorMsg(14);
-      }
-      char* temp2 = malloc(sizeof(char*)*strlen(token));
-      strcpy(temp2, token);
-      if (token != NULL){
-	errorMsg(14);
-      }
-      ReadFromArray(temp1,temp2);
-    }
-    else if (strcmp(token, "WRITE")){  
-    }
-    else if (strcmp(token, "FAIL")){  
-    }
-    else if (strcmp(token, "RECOVER")){  
-    }
-    else if (strcmp(token, "END")){  
-    }
-    else{
-	errorMsg(14);
-    }
-}
-
-
-
+//Prototypes for functions
+void parseLine(char * line);
+void readFromArray(int lba, int size);
+void writeToArray(int lba, int size, char* value);
+void failDisk(int disk);
+void recoverDisk(int disk);
+void endProgram();
 
 // Main
 int main( int argc, char* argv[])
 {
     // Declarations of variables
-    int level, strip, disks, size;
+    int size;
     char * filename;
     char c;
     char * endptr;
@@ -187,3 +140,186 @@ int main( int argc, char* argv[])
     
   exit(0);
 }
+
+
+// Parsing function
+// Splits up by command in trace file
+void parseLine (char * line){
+    char* token = strtok(line, " ");
+    if (token == NULL){
+	errorMsg(12);
+    }
+printf("Parse\n %s\n", token);
+
+    char * endPtr;
+    if (strcmp(token, "READ") == 0){
+printf("Read\n");
+      //Get the lba
+      token = strtok(NULL, " ");
+      if (token == NULL){
+	errorMsg(13);
+      }
+      int lba = strtol(token, &endPtr, 10);
+      if (token == endPtr) {
+        errorMsg(22);
+      }
+      
+      //Get the size of the read
+      token = strtok(NULL, " ");
+      if (token == NULL){
+	errorMsg(15);
+      }
+      int readSize = strtol(token, &endPtr, 10);
+      if (token == endPtr) {
+        errorMsg(16);
+      }
+      if (token == NULL){
+	errorMsg(24);
+      }
+
+      //The command should end here
+      token = strtok(NULL, " ");
+      if (token != NULL){
+	errorMsg(17);
+      }
+
+      readFromArray(lba,readSize);
+    }
+
+    else if (strcmp(token, "WRITE") == 0){ 
+      //Get the lba 
+      token = strtok(NULL, " ");
+      if (token == NULL){
+	errorMsg(14);
+      }
+      int lba = strtol(token, &endPtr, 10);
+      if (token == endPtr) {
+        errorMsg(14);
+      }
+
+      //Get the size of the write
+      token = strtok(NULL, " ");
+      if (token == NULL){
+	errorMsg(14);
+      }
+      int writeSize = strtol(token, &endPtr, 10);
+      if (token == endPtr) {
+        errorMsg(14);
+      }
+
+      //Get the value to write
+      token = strtok(NULL, " ");
+      if (token == NULL){
+	errorMsg(14);
+      }
+      char* value = malloc(sizeof(char*)*strlen(token));
+      strcpy(value, token);
+      
+      //The command should end here
+      token = strtok(NULL, " ");
+      if (token != NULL){
+	errorMsg(14);
+      }
+
+      writeToArray(lba, writeSize, value);
+    }
+    else if (strcmp(token, "FAIL") == 0){
+      //Get the disk that failed  
+      token = strtok(NULL, " ");
+      if (token == NULL){
+	errorMsg(14);
+      }
+      int disk = strtol(token, &endPtr, 10);
+      if (token == endPtr) {
+        errorMsg(14);
+      }
+      
+      //The command should end here
+      token = strtok(NULL, " ");
+      if (token != NULL){
+	errorMsg(14);
+      }
+      
+      failDisk(disk);
+    }
+    else if (strcmp(token, "RECOVER") == 0){  
+      //Gert the disk to recover
+      token = strtok(NULL, " ");
+      if (token == NULL){
+	errorMsg(14);
+      }
+      int disk = strtol(token, &endPtr, 10);
+      if (token == endPtr) {
+        errorMsg(14);
+      }
+      
+      //The command should end here
+      token = strtok(NULL, " ");
+      if (token != NULL){
+	errorMsg(14);
+      }
+      
+      recoverDisk(disk);
+    }
+    else if (strcmp(token, "END") == 0){ 
+      //There should be no other arguments with end
+      token = strtok(NULL, " ");
+      if (token != NULL){
+	errorMsg(14);
+      } 
+
+      endProgram();
+    }
+    else{
+	errorMsg(104);
+    }
+}
+
+// Read LBA size
+void readFromArray(int lba, int size) 
+{
+  int diskToStartRead = lba;
+  if (level == 0) {
+    int currentDisk = (lba/strip) % disks;
+    int currentBlock = (lba/strip)/disks;
+    int currentBlockIndex = (lba%strip);
+    while (size > 0) {
+      printf("Read this block, %i, at index, %i, on this disk %i\n", currentBlock, currentBlockIndex, currentDisk);
+      //print current block
+      lba ++;
+      currentDisk = (lba/strip) % disks;
+      currentBlock = (lba/strip)/disks;
+      currentBlockIndex = (lba%strip);
+      size --;
+    }
+  }
+}
+
+// Write LBA size
+void writeToArray(int lba, int size, char * value) 
+{
+
+}
+
+// Fail disk
+void failDisk(int disk) 
+{
+
+}
+
+// Recover disk
+void recoverDisk(int disk) 
+{
+
+}
+
+// End of trace file
+void endProgram() 
+{
+  printf("I am going to succesfully end\n");
+exit(0);
+}
+
+
+
+
