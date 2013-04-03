@@ -25,6 +25,7 @@ void writeToArray(int lba, int size, char* buff);
 void failDisk(int disk);
 void recoverDisk(int disk);
 void endProgram();
+int getPhysicalBlock(int numberOfDisks, int lba, int* diskToAccess, int* blockToAccess);
 
 // Main
 int main( int argc, char* argv[]){
@@ -127,6 +128,19 @@ int main( int argc, char* argv[]){
 		}
 	}
     
+    // Input checking for number of disks vs level
+    // Check that if it is RAID 10 there are an even # of disks
+    if ((level == 10) && ((disks % 2) != 0)){
+      errorMsg(0);
+    }
+    // Check that both levels 4 and 5 have more than 2 disks
+    if (level == 4 && disks < 3){
+      errorMsg(0);
+    }
+    if (level == 5 && disks < 3){
+      errorMsg(0);
+    }
+    
     // Create a disk array
     char * virtualDiskArray = "temp";
     diskArray = disk_array_create(virtualDiskArray, disks, blockSize);
@@ -147,8 +161,6 @@ void parseLine (char * line){
     if (token == NULL){
 		errorMsg(12);
     }
-
-    printf("Parse\n%s\n", token);
 
     char * endPtr;
     if (strcmp(token, "READ") == 0){
@@ -279,63 +291,137 @@ void parseLine (char * line){
 
 // Read LBA size
 void readFromArray(int lba, int size){
-	int diskToStartRead = lba;
-	if (level == 0) {
-		int currentDisk = (lba/strip) % disks;
+  int diskToStartRead = lba;
+  // DOES HANDLE A FAILED DISK
+  if (level == 0) {
+    int currentDisk, currentBlock;
+    getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
+    //int currentDisk = (lba/strip) % disks;
+    //int currentBlock = (lba%strip)+((lba/strip)/disks)*strip;
+    while (size > 0) {
+      printf("Read this block, %i, on this disk %i\n", currentBlock, currentDisk);
+      //print current block
+      //I think this is how this is supposed to work
+      char buffer[BLOCK_SIZE];
+      if(disk_array_read(diskArray, currentDisk, currentBlock, buffer) == 0){
+	printf("%s\n", buffer);
+      }else{
+	printf("ERROR\n");
+      }
+      lba ++;
+      getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
+      //currentDisk = (lba/strip) % disks;
+      //currentBlock = (lba%strip)+((lba/strip)/disks)*strip;
+      size --;
+    }
+  }
+  // DOES HANDLE A FAILED DISK
+  else if(level == 10){
+    // Will first look to see if first disk is available to read from
+    int currentDisk, currentBlock;
+    getPhysicalBlock(disks/2, lba, &currentDisk, &currentBlock);
+    currentDisk *= 2;
+    
+    while (size > 0){
+      printf("Read this block, %i, on this disk %i\n", currentBlock, currentDisk);
+      char buffer[BLOCK_SIZE];
+      if (disk_array_read(diskArray, currentDisk, currentBlock, buffer) == 0){
+        printf("%s\n", buffer);
+      } else if (disk_array_read(diskArray, currentDisk + 1, currentBlock, buffer) == 0){
+        printf("%s\n", buffer);
+      } else {
+	printf("ERROR\n");
+      }
+      lba++;
+      getPhysicalBlock(disks/2, lba, &currentDisk, &currentBlock);
+      currentDisk *= 2;
+      size --;
+    }
+  }
+  // DOES NOT INCLUDE PARITY DISK
+  else if(level == 4){
+    int nonParityDisks = disks - 1;
+    int currentDisk, currentBlock;
+    getPhysicalBlock(nonParityDisks, lba, &currentDisk, &currentBlock);
+    while (size > 0) {
+      printf("Read this block, %i, on this disk %i\n", currentBlock, currentDisk);
+      //print current block
+      //I think this is how this is supposed to work
+      char buffer[BLOCK_SIZE];
+      if(disk_array_read(diskArray, currentDisk, currentBlock, buffer) == 0){
+	printf("%s\n", buffer);
+      }else{
+	printf("ERROR\n");
+      }
+      lba ++;
+      getPhysicalBlock(nonParityDisks, lba, &currentDisk, &currentBlock);
+      size --;
+    }
+  }
+  else if(level == 5){
 
-		int currentBlock = (lba%strip)+(lba/strip)/disks;
-
-		while (size > 0) {
-			printf("Read this block, %i, on this disk %i\n", currentBlock, currentDisk);
-			//print current block
-
-			//I think this is how this is supposed to work
-			char buffer[BLOCK_SIZE];
-			disk_array_read(diskArray, currentDisk, currentBlock, buffer);
-			printf("%s\n", buffer);
-			lba ++;
-			currentDisk = (lba/strip) % disks;
-			currentBlock = (lba%strip)+(lba/strip)/disks;
-			size --;
-		}
-	}
-	else if(level == 10){
-
-	}
-	else if(level == 4){
-
-	}
-	else if(level == 5){
-
-	}
-	else{
-		errorMsg(15);
-	}
+  }
+  else{
+    errorMsg(15);
+  }
 }
 
 // Write LBA size
 void writeToArray(int lba, int size, char * buff){
-	if (level == 0) {
-		int currentDisk = (lba/strip) % disks;
-		int currentBlock = (lba%strip)+(lba/strip)/disks;
-		while (size > 0) {
-			printf("Write this block, %i, on this disk %i\n", currentBlock, currentDisk);
-
-			//this should work
-			disk_array_write(diskArray, currentDisk, currentBlock, buff);
-
-			lba ++;
-			currentDisk = (lba/strip) % disks;
-			currentBlock = (lba%strip)+(lba/strip)/disks;
-			size --;
-		}
-	}
-	else if(level == 10){
-
-	}
-	else if(level == 4){
-
-	}
+  //DOES HANDLE A FAILED DISK
+  if (level == 0) {
+    int currentDisk, currentBlock;
+    getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
+    //int currentDisk = (lba/strip) % disks;
+    //int currentBlock = (lba%strip)+((lba/strip)/disks)*strip;
+    while (size > 0) {
+      printf("Write this block, %i, on this disk %i\n", currentBlock, currentDisk);
+      //memset(buff,(currentDisk+1)*(currentBlock+1),sizeof(buffer));
+      //this should work
+      disk_array_write(diskArray, currentDisk, currentBlock, buff);
+      lba ++;
+      getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
+      //currentDisk = (lba/strip) % disks;
+      //currentBlock = (lba%strip)+((lba/strip)/disks)*strip;
+      size --;
+    }
+  }
+  //DOES HANDLE A FAILED DISK
+  else if(level == 10){
+    int currentDisk, currentBlock;
+    getPhysicalBlock(disks/2, lba, &currentDisk, &currentBlock);
+    currentDisk *= 2;
+    while (size > 0) {
+      printf("Write this block, %i, on this disk %i\n", currentBlock, currentDisk);
+      
+      // Status keeps track of if write to disk succeded
+      // If we fail both, status will equal -2
+      int status = disk_array_write(diskArray, currentDisk, currentBlock, buff);
+      status += disk_array_write(diskArray, currentDisk + 1, currentBlock, buff);
+      if (status == -2){
+	printf("ERROR\n");
+      }
+      lba ++;
+      getPhysicalBlock(disks/2, lba, &currentDisk, &currentBlock);
+      currentDisk *= 2;
+      size--;
+    }
+  }
+  //FIRST WITHOUT PARITY DISK
+  else if(level == 4){
+    int nonParityDisks = disks - 1;
+    int currentDisk, currentBlock;
+    getPhysicalBlock(nonParityDisks, lba, &currentDisk, &currentBlock);
+    while (size > 0) {
+      printf("Write this block, %i, on this disk %i\n", currentBlock, currentDisk);
+      //memset(buff,(currentDisk+1)*(currentBlock+1),sizeof(buffer));
+      //this should work
+      disk_array_write(diskArray, currentDisk, currentBlock, buff);
+      lba ++;
+      getPhysicalBlock(nonParityDisks, lba, &currentDisk, &currentBlock);
+      size --;
+    }
+  }
 	else if(level == 5){
 
 	}
@@ -360,6 +446,11 @@ void endProgram(){
   exit(0);
 }
 
-
+// Return -1 if LBA is outside the realm of disk space
+int getPhysicalBlock(int numberOfDisks, int lba, int* diskToAccess, int* blockToAccess){
+    *diskToAccess = (lba/strip) % numberOfDisks;
+    *blockToAccess = (lba%strip)+((lba/strip)/numberOfDisks)*strip;
+    return 0;
+}
 
 
