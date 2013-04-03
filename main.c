@@ -285,6 +285,7 @@ void parseLine (char * line){
 		endProgram();
     }
     else{
+		printf("%s\n", token);
 		errorMsg(104);
     }
 }
@@ -417,6 +418,24 @@ void writeToArray(int lba, int size, char * buff){
       //memset(buff,(currentDisk+1)*(currentBlock+1),sizeof(buffer));
       //this should work
       disk_array_write(diskArray, currentDisk, currentBlock, buff);
+      
+      //Update the parity disk
+      //Go through each disk at the currentBlock, xor them together and write it to the parity at that block
+      int i = 0;
+      char buffer[BLOCK_SIZE], parity[BLOCK_SIZE];
+      disk_array_read(diskArray, i, currentBlock, parity);
+      
+      for(i = 1; i < disks - 1; i++) {
+	disk_array_read(diskArray, i, currentBlock, buffer);
+	int j;
+	for (j = 0; j < BLOCK_SIZE; j++) {
+	  parity[j] = parity[j] ^ buffer[j];
+	}
+      }
+      
+      disk_array_write(diskArray, disks - 1, currentBlock, parity);
+      
+      
       lba ++;
       getPhysicalBlock(nonParityDisks, lba, &currentDisk, &currentBlock);
       size --;
