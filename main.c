@@ -256,7 +256,7 @@ void parseLine (char * line){
       
 		failDisk(disk);
     }
-    else if (strcmp(token, "RECOVER") == 0){  
+    else if (strcmp(token, "RECOVER") == 0){
 		//Gert the disk to recover
 		token = strtok(NULL, " ");
 		if (token == NULL){
@@ -272,7 +272,6 @@ void parseLine (char * line){
 		if (token != NULL){
 			errorMsg(14);
 		}
-      
 		recoverDisk(disk);
     }
     else if (strcmp(token, "END") == 0){ 
@@ -320,7 +319,7 @@ void readFromArray(int lba, int size){
   else if(level == 10){
     // Will first look to see if first disk is available to read from
     int currentDisk, currentBlock;
-    getPhysicalBlock(disks/2, lba, &currentDisk, &currentBlock);
+    getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
     currentDisk *= 2;
     
     while (size > 0){
@@ -334,16 +333,16 @@ void readFromArray(int lba, int size){
 	printf("ERROR\n");
       }
       lba++;
-      getPhysicalBlock(disks/2, lba, &currentDisk, &currentBlock);
+      getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
       currentDisk *= 2;
       size --;
     }
   }
   // DOES NOT INCLUDE PARITY DISK
   else if(level == 4){
-    int nonParityDisks = disks - 1;
     int currentDisk, currentBlock;
-    getPhysicalBlock(nonParityDisks, lba, &currentDisk, &currentBlock);
+    getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
+    
     while (size > 0) {
       printf("Read this block, %i, on this disk %i\n", currentBlock, currentDisk);
       //print current block
@@ -351,11 +350,28 @@ void readFromArray(int lba, int size){
       char buffer[BLOCK_SIZE];
       if(disk_array_read(diskArray, currentDisk, currentBlock, buffer) == 0){
 	printf("%s\n", buffer);
-      }else{
-	printf("ERROR\n");
+      }else{ //Try to recover disk on read fail using parity
+        int j, k;
+        char temp [BLOCK_SIZE]
+        char compareToParityArray[BLOCK_SIZE];
+        for (j = 0; j < disks; j++){
+          if (j != currentDisk){
+	    if (disk_array_read(diskArray, j, currentBlock, temp) == 0){
+	      for(k = 0; k < BLOCK_SIZE; k++){
+	        compareToParityArray[k] = compareToParityArray[k]^temp[k];
+	      }
+	    } else{
+	      printf("ERROR\n");
+	      j = disks + 1;
+	    }
+          }
+        }
+      }
+      if (j == disks){
+	printf("%s\n", compareToParityArray);
       }
       lba ++;
-      getPhysicalBlock(nonParityDisks, lba, &currentDisk, &currentBlock);
+      getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
       size --;
     }
   }
@@ -390,7 +406,7 @@ void writeToArray(int lba, int size, char * buff){
   //DOES HANDLE A FAILED DISK
   else if(level == 10){
     int currentDisk, currentBlock;
-    getPhysicalBlock(disks/2, lba, &currentDisk, &currentBlock);
+    getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
     currentDisk *= 2;
     while (size > 0) {
       printf("Write this block, %i, on this disk %i\n", currentBlock, currentDisk);
@@ -403,24 +419,39 @@ void writeToArray(int lba, int size, char * buff){
 	printf("ERROR\n");
       }
       lba ++;
-      getPhysicalBlock(disks/2, lba, &currentDisk, &currentBlock);
+      getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
       currentDisk *= 2;
       size--;
     }
   }
   //FIRST WITHOUT PARITY DISK
   else if(level == 4){
-    int nonParityDisks = disks - 1;
     int currentDisk, currentBlock;
-    getPhysicalBlock(nonParityDisks, lba, &currentDisk, &currentBlock);
-    while (size > 0) {
-      printf("Write this block, %i, on this disk %i\n", currentBlock, currentDisk);
-      //memset(buff,(currentDisk+1)*(currentBlock+1),sizeof(buffer));
-      //this should work
-      disk_array_write(diskArray, currentDisk, currentBlock, buff);
+    getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
+    while (size > 0) {      
+      //check if it is the start of a strip
+      int stripLength =(disks - 1)*strip;
+      if(!(lba%stripLength) && size >= stripLength ){
+	int i, j, k;
+        char parity[BLOCK_SIZE];
+	for (i = 0; i < strip; i ++){
+	  int physicalBlock = strip*(lba/stripLength);
+	  for (j = 0; j < disks - 1; j++){
+	    disk_array_write(diskArray, j, physicalBlock, buff);
+	    for(k = 0; k < BLOCK_SIZE; k++){
+	      parity[k] = parity[k]^buff[k];
+	    }
+	  }
+	  disk_array_write(diskArray, disks-1, physicalBlock, parity);
+	}
+      }
+      else{
+	//if not doing a full strip... things get complicated
+      }
       
       //Update the parity disk
       //Go through each disk at the currentBlock, xor them together and write it to the parity at that block
+      /*
       int i = 0;
       char buffer[BLOCK_SIZE], parity[BLOCK_SIZE];
       disk_array_read(diskArray, i, currentBlock, parity);
@@ -434,10 +465,10 @@ void writeToArray(int lba, int size, char * buff){
       }
       
       disk_array_write(diskArray, disks - 1, currentBlock, parity);
-      
+    */    
       
       lba ++;
-      getPhysicalBlock(nonParityDisks, lba, &currentDisk, &currentBlock);
+      getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
       size --;
     }
   }
@@ -455,8 +486,49 @@ void failDisk(int disk){
 }
 
 // Recover disk
+// Possibly add a return value because if recover fails on a RAID 4/5
+// it will act as if the disk has been recovered when in reality it
 void recoverDisk(int disk){
-	disk_array_recover_disk( diskArray, disk);
+  if (level == 0){
+    disk_array_recover_disk(diskArray, disk);
+  }else if (level == 10){
+     disk_array_recover_disk(diskArray, disk);
+     int diskToCopyFrom;
+     if (disk % 2){
+      diskToCopyFrom = disk - 1; 
+     } else{
+      diskToCopyFrom = disk + 1; 
+     }
+     int i;
+     for (i = 0; i < blockSize; i++){
+      char buffer[BLOCK_SIZE];
+      disk_array_read(diskArray, diskToCopyFrom, i, buffer);
+      disk_array_write(diskArray, disk, i, buffer);
+     }
+  }else if (level == 4){
+    int i, j, k;
+    int  firstTime = 1;
+    char temp [BLOCK_SIZE]
+    char compareToParityArray[BLOCK_SIZE];
+    for (i = 0; i < blockSize; i++){
+      for (j = 0; j < disks; j++){
+        if (j != disk){
+	  if (disk_array_read(diskArray, j, i, temp) == 0){
+	    for(k = 0; k < BLOCK_SIZE; k++){
+	      compareToParityArray[k] = compareToParityArray[k]^temp[k];
+	    }
+	  } else{
+	    failDisk(disk);
+	    return;
+	  }
+        }
+      }
+      if (firstTime){
+	  disk_array_recover_disk(diskArray, disk);
+	  firstTime = 0;
+      }
+      disk_array_write(diskArray, disk, i, compareToParityArray);
+  }
 }
 
 // End of trace file
@@ -466,10 +538,24 @@ void endProgram(){
 }
 
 // Return -1 if LBA is outside the realm of disk space
+// Handles per level
 int getPhysicalBlock(int numberOfDisks, int lba, int* diskToAccess, int* blockToAccess){
+  if (level == 0){  
     *diskToAccess = (lba/strip) % numberOfDisks;
     *blockToAccess = (lba%strip)+((lba/strip)/numberOfDisks)*strip;
     return 0;
+  } else if (level == 10){ 
+    numberOfDisks = numberOfDisks / 2;
+    *diskToAccess = (lba/strip) % numberOfDisks;
+    *blockToAccess = (lba%strip)+((lba/strip)/numberOfDisks)*strip;
+    return 0;
+  } else if (level == 4){
+    numberOfDisks -= 1;
+    *diskToAccess = (lba/strip) % numberOfDisks;
+    *blockToAccess = (lba%strip)+((lba/strip)/numberOfDisks)*strip;
+  }  else {
+    return 0;
+  }
 }
 
 
