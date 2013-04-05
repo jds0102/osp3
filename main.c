@@ -170,7 +170,7 @@ void parseLine (char * line){
   fprintf(stdout, "%s\n", line);
   char* token = strtok(line, " ");
   if (token == NULL){
-    errorMsgParse();
+    return;
   }
 
   char * endPtr;
@@ -298,7 +298,8 @@ void parseLine (char * line){
     }
     endProgram();
   }
-  
+  else if (strcmp(token, "") == 0){
+  }
   else{
     errorMsgParse();
   }
