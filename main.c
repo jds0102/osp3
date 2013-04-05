@@ -14,13 +14,13 @@ struct disk_array * diskArray;
 
 // Error Message for input
 void errorMsgInput(){
-    fprintf(stderr, "ERROR IN INPUT");
+    fprintf(stderr, "ERROR IN INPUT\n");
     exit(1);
 }
 
 // Error Message for parsing
 void errorMsgParse(){
-  fprintf(stderr, "ERROR IN PARSING");
+  fprintf(stderr, "ERROR IN PARSING\n");
   exit(1);
 }
 
@@ -64,9 +64,7 @@ int main( int argc, char* argv[]){
   int option_index = 0;
   
   
-  // Need to add a detection if same arg name was passed twice
   while ((c = getopt_long_only(argc, argv, "a:b:c:d:e:f", long_options, &option_index)) != -1) {
-    //Used to detect if same arg is called twice
     
     switch (c) {
       // LEVEL  
@@ -389,7 +387,35 @@ void readFromArray(int lba, int size){
   
   //Level 5
   else if(level == 5){
-
+    int currentDisk, currentBlock;
+    getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
+    int currentParityDisk = (currentBlock/strip) % disks;;
+    if (currentDisk >= currentParityDisk) {
+      currentDisk ++;
+    }
+    while (size > 0) {
+      char buffer[BLOCK_SIZE];
+      // If read succeeds print out value
+      if(disk_array_read(diskArray, currentDisk, currentBlock, buffer) == 0){
+	int* firstValue = (int *)buffer;
+	printf("%i ", *firstValue);
+      }else{ //Try to recover disk on read fail using parity
+	if (calculateXOR(currentDisk,currentBlock,buffer) ==  -1){
+	  printf("ERROR ");
+	}
+	else{
+	  int* firstValue = (int *)buffer;
+	  printf("%i ", *firstValue);
+	}
+      }
+      lba ++;
+      getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
+      currentParityDisk = (currentBlock/strip) % disks;;
+      if (currentDisk >= currentParityDisk) {
+        currentDisk ++;
+      }
+      size --;
+    }
   }
   
   //Error
@@ -457,37 +483,130 @@ void writeToArray(int lba, int size, char * buff){
   
   //Level 4
   else if(level == 4){
-    // successfulWrite should be 0 after all writing is complete
-    // Only want to print error once
-    int successfulWrite = 0;
-    int currentDisk, currentBlock;
-    getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
-    int stripLength =(disks - 1)*strip;
-    int i;
+    	// successfulWrite should be 0 after all writing is complete
+    	// Only want to print error once
+    	int successfulWrite = 0;
+    	int currentDisk, currentBlock;
+    	int stripeLength =(disks - 1)*strip;
+    	int i, j, k;
 
-    while (size > 0) {      
-      //check if it is the start of a strip
-      successfulWrite += disk_array_write(diskArray, currentDisk, currentBlock, buff);
-      
-      if((lba%stripLength) == stripLength - 1  || size == 1){
-        char parity[BLOCK_SIZE];
-	int firstBlockInStripe = currentBlock - (currentBlock % strip);
-	//calculate how many parity blocks to update and replace strip below with it
-	int x = strip;
-	for(i = 0; i < x; i ++){
-	    calculateXOR(disks-1, i+firstBlockInStripe, parity);
-	    disk_array_write(diskArray, disks-1, i+firstBlockInStripe, parity);
+	char temp[BLOCK_SIZE];
+	char parityChange[BLOCK_SIZE];
+
+	while (size > 0) {
+		int whereInStripe = lba % stripeLength;
+		int startOfThisStripe = lba - whereInStripe;
+		int blockOffsetOfThisStripe = (startOfThisStripe)/(disks-1);
+		int coverTo = whereInStripe + size;
+		int tempNum;
+
+		for(i = 0; i < strip; i ++){
+			for (j = 0; j < BLOCK_SIZE; j++) {
+     				parityChange[j] = 0;
+			}
+			tempNum = i;
+			//printf("i: %i\n", i);
+			currentBlock = i + blockOffsetOfThisStripe;
+			while(tempNum < stripeLength){
+			//printf("temp: %i\n", tempNum);
+				currentDisk = tempNum / strip;
+				if(tempNum >= whereInStripe && tempNum < coverTo){					
+					if (disk_array_write(diskArray, currentDisk, currentBlock, buff)){
+						successfulWrite --; //write failed
+					}
+					for (k = 0; k < BLOCK_SIZE; k++) {
+						parityChange[k] = parityChange[k] ^ buff[k];
+					}
+				}
+				else{
+					if (disk_array_read(diskArray, currentDisk, currentBlock, temp) != 0) {
+					//error reading old data, which means we cannot update parity for this block
+					}
+					else{
+						for (k = 0; k < BLOCK_SIZE; k++) {
+							parityChange[k] = parityChange[k] ^ temp[k];
+						}
+					}
+				}
+				tempNum += strip;
+			}
+			disk_array_write(diskArray, disks-1, currentBlock, parityChange);
+			//printf("parity %i is %i\n", i, *((int*)parityChange));
+		}
+		int next = startOfThisStripe + stripeLength;
+		size -= next - lba;
+		lba = next;
 	}
-      }
-      lba ++;
-      getPhysicalBlock(disks, lba, &currentDisk, &currentBlock);
-      size --;
-    }
+    	if (successfulWrite != 0) {
+      		fprintf(stdout, "ERROR "); 
+    	}
   }
   
   //Level 5
   else if(level == 5){
+    // successfulWrite should be 0 after all writing is complete
+    	// Only want to print error once
+    	int successfulWrite = 0;
+    	int currentDisk, currentBlock;
+    	int stripeLength =(disks - 1)*strip;
+    	int i, j, k;
+	int currentParityDisk;
 
+	char temp[BLOCK_SIZE];
+	char parityChange[BLOCK_SIZE];
+
+	while (size > 0) {
+		int whereInStripe = lba % stripeLength;
+		int startOfThisStripe = lba - whereInStripe;
+		int blockOffsetOfThisStripe = (startOfThisStripe)/(disks-1);
+		int coverTo = whereInStripe + size;
+		int tempNum;
+
+		for(i = 0; i < strip; i ++){
+			for (j = 0; j < BLOCK_SIZE; j++) {
+     				parityChange[j] = 0;
+			}
+			tempNum = i;
+			//printf("i: %i\n", i);
+			currentBlock = i + blockOffsetOfThisStripe;
+			currentParityDisk = (currentBlock/strip) % disks;
+			while(tempNum < stripeLength){
+			//printf("temp: %i\n", tempNum);
+				currentDisk = tempNum / strip;
+				if (currentDisk >= currentParityDisk) {
+				  currentDisk ++;
+				}
+				
+				if(tempNum >= whereInStripe && tempNum < coverTo){					
+					if (disk_array_write(diskArray, currentDisk, currentBlock, buff)){
+						successfulWrite --; //write failed
+					}
+					for (k = 0; k < BLOCK_SIZE; k++) {
+						parityChange[k] = parityChange[k] ^ buff[k];
+					}
+				}
+				else{
+					if (disk_array_read(diskArray, currentDisk, currentBlock, temp) != 0) {
+					//error reading old data, which means we cannot update parity for this block
+					}
+					else{
+						for (k = 0; k < BLOCK_SIZE; k++) {
+							parityChange[k] = parityChange[k] ^ temp[k];
+						}
+					}
+				}
+				tempNum += strip;
+			}
+			disk_array_write(diskArray, currentParityDisk, currentBlock, parityChange);
+			//printf("parity %i is %i\n", i, *((int*)parityChange));
+		}
+		int next = startOfThisStripe + stripeLength;
+		size -= next - lba;
+		lba = next;
+	}
+    	if (successfulWrite != 0) {
+      		fprintf(stdout, "ERROR "); 
+    	}
   }
   
   //Error
@@ -577,15 +696,11 @@ void getPhysicalBlock(int numberOfDisks, int lba, int* diskToAccess, int* blockT
     *blockToAccess = (lba%strip)+((lba/strip)/numberOfDisks)*strip;
   } 
   // Level 4
-  else if (level == 4){
+  else if (level == 4 || level == 5){
     numberOfDisks -= 1;
     *diskToAccess = (lba/strip) % numberOfDisks;
     *blockToAccess = (lba%strip)+((lba/strip)/numberOfDisks)*strip;
-  }  
-  // Level 5
-  else if (level == 5){
-    
-  }
+  } 
 }
 
 /*
